@@ -1,7 +1,0 @@
-streamlit==1.22.0
-yfinance
-pandas
-matplotlib
-scikit-learn
-prophet
-numpy
