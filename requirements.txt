@@ -1,7 +1,7 @@
-# Streamlit version
+# Core Framework
 streamlit==1.25.0
 
-# Finance and data packages
+# Data and Finance
 yfinance==0.2.31
 pandas==2.2.2
 numpy>=1.26.0
@@ -10,14 +10,16 @@ numpy>=1.26.0
 matplotlib==3.8.4
 plotly==5.22.0
 
-# Machine Learning / Deep Learning
+# Machine Learning & Deep Learning
 scikit-learn==1.4.2
 tensorflow==2.16.1
 
 # Forecasting
 prophet==1.1.5
 
-# Miscellaneous
-pillow==10.3.0
+# Image Processing
+pillow==9.5.0  # Compatible with Streamlit 1.25.0
+
+# Utilities
 requests==2.32.2
 tqdm==4.66.4
