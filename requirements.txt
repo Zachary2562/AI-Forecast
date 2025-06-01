@@ -1,9 +1,0 @@
-streamlit
-yfinance
-pandas
-numpy
-scikit-learn
-matplotlib
-prophet==1.1.4
-protobuf==3.19.6
-
