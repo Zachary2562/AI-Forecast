@@ -6,3 +6,4 @@ scikit-learn==1.6.1
 matplotlib==3.10.3
 prophet==1.1.4
 protobuf==3.20.3
+pillow
