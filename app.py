@@ -1,64 +1,78 @@
-# Force Python to use local imghdr patch to prevent Streamlit crash
-import sys
-sys.modules['imghdr'] = __import__('imghdr')
-
-# Core Imports
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from prophet import Prophet
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error
+from prophet import Prophet
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
 
-# Streamlit App Title
-st.title("📈 AI Stock Forecasting App")
+st.set_page_config(page_title="AI Stock Forecast", layout="wide")
+st.title("📈 AI-Powered Stock Price Forecast")
 
-# User Inputs
-ticker = st.text_input("Enter stock or ETF ticker (e.g., AAPL, MSFT, SPY):", value="AAPL")
-forecast_years = st.slider("Forecast how many years into the future?", 1, 5, 2)
+ticker = st.text_input("Enter Stock Ticker (e.g., AAPL, TSLA, GOOGL, BTC-USD, GC=F):", "AAPL")
+start_date = "2010-01-01"
+end_date = "2025-05-31"
 
-# Download Historical Data
 @st.cache_data
 def load_data(ticker):
-    df = yf.download(ticker, start="2010-01-01")
-    df.reset_index(inplace=True)
-    return df
+    return yf.download(ticker, start=start_date, end=end_date)
 
+def plot_forecast(df, forecast, model_name):
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(df['Date'], df['Close'], label="Actual Price", color='blue')
+    ax.plot(forecast['ds'], forecast['yhat'], label=f"{model_name} Forecast", color='green')
+    ax.set_title(f"{model_name} Forecast vs Actual Price")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Price")
+    ax.legend()
+    st.pyplot(fig)
+
+data_load_state = st.text("Loading data...")
 df = load_data(ticker)
+data_load_state.text("Loading data... done!")
 
-# Show historical chart
-st.subheader("📊 Historical Closing Prices")
-st.line_chart(df[['Date', 'Close']].set_index('Date'))
+df = df.reset_index()
+df = df[['Date', 'Close']]
 
-# Add Technical Indicators
-def add_indicators(df):
-    df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    df['SMA_200'] = df['Close'].rolling(window=200).mean()
-    df['EMA_12'] = df['Close'].ewm(span=12, adjust=False).mean()
-    df['EMA_26'] = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = df['EMA_12'] - df['EMA_26']
-    df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    return df
-
-df = add_indicators(df)
-
-# Prophet Forecasting
-st.subheader("🔮 Prophet Forecast")
-prophet_df = df[['Date', 'Close']].rename(columns={'Date': 'ds', 'Close': 'y'})
+# Facebook Prophet Forecast
+df_prophet = df.rename(columns={"Date": "ds", "Close": "y"})
 m = Prophet()
-m.fit(prophet_df)
-
-future = m.make_future_dataframe(periods=forecast_years * 365)
+m.fit(df_prophet)
+future = m.make_future_dataframe(periods=365)
 forecast = m.predict(future)
 
-fig1 = m.plot(forecast)
-st.pyplot(fig1)
+st.subheader("Prophet Forecast")
+plot_forecast(df, forecast, "Prophet")
 
-# Show technical indicators
-st.subheader("📉 Technical Indicators")
-st.line_chart(df[['Date', 'SMA_50', 'SMA_200']].set_index('Date'))
-st.line_chart(df[['Date', 'MACD', 'Signal_Line']].set_index('Date'))
+# LSTM Model
+st.subheader("LSTM Forecast")
+df_lstm = df.copy()
+scaler = MinMaxScaler(feature_range=(0, 1))
+df_lstm['Close'] = scaler.fit_transform(df_lstm[['Close']])
 
-# Footer
-st.caption("Made with ❤️ using Streamlit, Prophet, and yfinance")
+lookback = 60
+X, y = [], []
+for i in range(lookback, len(df_lstm)):
+    X.append(df_lstm['Close'].values[i-lookback:i])
+    y.append(df_lstm['Close'].values[i])
+
+X, y = np.array(X), np.array(y)
+X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+
+model = Sequential()
+model.add(LSTM(50, return_sequences=True, input_shape=(X.shape[1], 1)))
+model.add(LSTM(50))
+model.add(Dense(1))
+model.compile(loss='mean_squared_error', optimizer='adam')
+model.fit(X, y, epochs=5, batch_size=64, verbose=0)
+
+last_60 = df_lstm['Close'].values[-60:]
+pred_input = last_60.reshape(1, lookback, 1)
+lstm_pred_scaled = model.predict(pred_input)
+lstm_pred = scaler.inverse_transform(lstm_pred_scaled)
+
+future_date = pd.to_datetime(df['Date'].iloc[-1]) + pd.Timedelta(days=1)
+st.write(f"📊 LSTM predicts the price for {future_date.date()} to be: **${lstm_pred[0][0]:.2f}**")
