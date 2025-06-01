@@ -4,75 +4,100 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
-from prophet import Prophet
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
+from prophet import Prophet
+import datetime
 
-st.set_page_config(page_title="AI Stock Forecast", layout="wide")
-st.title("📈 AI-Powered Stock Price Forecast")
+st.set_page_config(layout="wide")
 
-ticker = st.text_input("Enter Stock Ticker (e.g., AAPL, TSLA, GOOGL, BTC-USD, GC=F):", "AAPL")
-start_date = "2010-01-01"
-end_date = "2025-05-31"
+st.title("📈 AI-Powered Stock & Fund Price Forecasting App")
 
-@st.cache_data
-def load_data(ticker):
-    return yf.download(ticker, start=start_date, end=end_date)
+# Sidebar inputs
+ticker = st.sidebar.text_input("Enter Ticker (e.g., AAPL, FSELX, BTC-USD):", value="AAPL")
+start_date = st.sidebar.date_input("Start Date", datetime.date(2010, 1, 1))
+end_date = st.sidebar.date_input("End Date", datetime.date.today())
 
-def plot_forecast(df, forecast, model_name):
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df['Date'], df['Close'], label="Actual Price", color='blue')
-    ax.plot(forecast['ds'], forecast['yhat'], label=f"{model_name} Forecast", color='green')
-    ax.set_title(f"{model_name} Forecast vs Actual Price")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Price")
-    ax.legend()
-    st.pyplot(fig)
+if start_date >= end_date:
+    st.sidebar.error("End date must be after start date.")
+    st.stop()
 
-data_load_state = st.text("Loading data...")
-df = load_data(ticker)
-data_load_state.text("Loading data... done!")
+@st.cache_data(show_spinner=False)
+def load_data(ticker, start, end):
+    data = yf.download(ticker, start=start, end=end)
+    if data.empty:
+        raise ValueError("No data found for this ticker.")
+    data["Date"] = data.index
+    return data
 
-df = df.reset_index()
-df = df[['Date', 'Close']]
+try:
+    df = load_data(ticker, start_date, end_date)
+    st.success(f"Loaded {len(df)} rows of data for {ticker}")
+except Exception as e:
+    st.error(f"Error loading data: {e}")
+    st.stop()
 
-# Facebook Prophet Forecast
-df_prophet = df.rename(columns={"Date": "ds", "Close": "y"})
-m = Prophet()
-m.fit(df_prophet)
-future = m.make_future_dataframe(periods=365)
-forecast = m.predict(future)
+# Plot historical prices
+st.subheader("📊 Historical Prices")
+st.line_chart(df["Close"])
 
-st.subheader("Prophet Forecast")
-plot_forecast(df, forecast, "Prophet")
+# Prophet Forecasting
+st.subheader("🔮 Prophet Forecast")
+prophet_df = df[["Date", "Close"]].rename(columns={"Date": "ds", "Close": "y"})
 
-# LSTM Model
-st.subheader("LSTM Forecast")
-df_lstm = df.copy()
-scaler = MinMaxScaler(feature_range=(0, 1))
-df_lstm['Close'] = scaler.fit_transform(df_lstm[['Close']])
+model = Prophet()
+model.fit(prophet_df)
 
-lookback = 60
-X, y = [], []
-for i in range(lookback, len(df_lstm)):
-    X.append(df_lstm['Close'].values[i-lookback:i])
-    y.append(df_lstm['Close'].values[i])
+future = model.make_future_dataframe(periods=365)
+forecast = model.predict(future)
 
-X, y = np.array(X), np.array(y)
-X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+fig1 = model.plot(forecast)
+st.pyplot(fig1)
 
-model = Sequential()
-model.add(LSTM(50, return_sequences=True, input_shape=(X.shape[1], 1)))
-model.add(LSTM(50))
-model.add(Dense(1))
-model.compile(loss='mean_squared_error', optimizer='adam')
-model.fit(X, y, epochs=5, batch_size=64, verbose=0)
+# LSTM Forecasting
+st.subheader("🧠 LSTM Forecast")
 
-last_60 = df_lstm['Close'].values[-60:]
-pred_input = last_60.reshape(1, lookback, 1)
-lstm_pred_scaled = model.predict(pred_input)
-lstm_pred = scaler.inverse_transform(lstm_pred_scaled)
+# Preprocess for LSTM
+data_lstm = df[["Close"]].values
+scaler = MinMaxScaler()
+scaled_data = scaler.fit_transform(data_lstm)
 
-future_date = pd.to_datetime(df['Date'].iloc[-1]) + pd.Timedelta(days=1)
-st.write(f"📊 LSTM predicts the price for {future_date.date()} to be: **${lstm_pred[0][0]:.2f}**")
+train_len = int(len(scaled_data) * 0.8)
+train_data = scaled_data[:train_len]
+test_data = scaled_data[train_len - 60:]
+
+X_train, y_train = [], []
+for i in range(60, len(train_data)):
+    X_train.append(train_data[i - 60:i, 0])
+    y_train.append(train_data[i, 0])
+
+X_train, y_train = np.array(X_train), np.array(y_train)
+X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+
+# Build LSTM model
+model_lstm = Sequential()
+model_lstm.add(LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+model_lstm.add(LSTM(50))
+model_lstm.add(Dense(1))
+model_lstm.compile(optimizer='adam', loss='mean_squared_error')
+model_lstm.fit(X_train, y_train, epochs=5, batch_size=32, verbose=0)
+
+# Forecast
+X_test = []
+for i in range(60, len(test_data)):
+    X_test.append(test_data[i - 60:i, 0])
+X_test = np.array(X_test)
+X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+predictions = model_lstm.predict(X_test)
+predictions = scaler.inverse_transform(predictions)
+
+# Plot
+lstm_dates = df.index[train_len:]
+plt.figure(figsize=(14, 5))
+plt.plot(lstm_dates, df["Close"].iloc[train_len:], label="Actual")
+plt.plot(lstm_dates, predictions, label="LSTM Forecast")
+plt.title("LSTM Model Forecast")
+plt.xlabel("Date")
+plt.ylabel("Price")
+plt.legend()
+st.pyplot(plt)
