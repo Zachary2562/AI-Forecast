@@ -5,4 +5,5 @@ numpy
 scikit-learn
 tensorflow-cpu
 matplotlib
-prophet
+prophet==1.1.4
+protobuf~=3.19.0
