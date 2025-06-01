@@ -3,7 +3,6 @@ yfinance
 pandas
 numpy
 scikit-learn
-tensorflow-cpu==2.11.0
 matplotlib
 prophet==1.1.4
 protobuf==3.19.6
