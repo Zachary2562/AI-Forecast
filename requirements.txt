@@ -1,8 +1,23 @@
+# Streamlit version
 streamlit==1.25.0
+
+# Finance and data packages
 yfinance==0.2.31
 pandas==2.2.2
-numpy==1.24.4
-scikit-learn==1.2.2
-matplotlib==3.7.1
-pillow==9.4.0
-prophet==1.1.4
+numpy>=1.26.0
+
+# Visualization
+matplotlib==3.8.4
+plotly==5.22.0
+
+# Machine Learning / Deep Learning
+scikit-learn==1.4.2
+tensorflow==2.16.1
+
+# Forecasting
+prophet==1.1.5
+
+# Miscellaneous
+pillow==10.3.0
+requests==2.32.2
+tqdm==4.66.4
