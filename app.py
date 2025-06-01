@@ -84,3 +84,10 @@ if ticker:
     valid["Predictions"] = predictions
 
     st.line_chart(valid[["Close", "Predictions"]])
+import traceback
+try:
+    # run your Streamlit app code here
+    pass
+except Exception as e:
+    st.error("An unexpected error occurred:")
+    st.text(traceback.format_exc())
